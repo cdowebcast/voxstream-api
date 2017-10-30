@@ -3,13 +3,18 @@
 namespace Codemax\VoxStream;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\RequestException;
 
-class API
+class API implements VoxInterface
 {
     use VoxFunctions;
 
     private $host;
     private $chave_api;
+    public $response = array();
+    public $error = array();
+    public $success = array();
 
     /**
      * API constructor.
@@ -17,10 +22,10 @@ class API
      */
     public function __construct($options = array())
     {
-        if(!empty($options))
+        if(!$this->checkOptions($options))
         {
-            $this->host = $options['host'];
-            $this->chave_api = $options['chave_api'];
+            $this->setHost($options['host']);
+            $this->setChaveAPI($options['chave_api']);
         }
     }
 
@@ -29,42 +34,91 @@ class API
         return $this->host;
     }
 
+    public function reportError($param, $message, $url = '')
+    {
+        $array = [
+            'param' => $param,
+            'url' => $url,
+            'verbose' => $message,
+        ];
+
+        array_push($this->error, $array);
+    }
+
     public function getChaveAPI()
     {
         return $this->chave_api;
     }
 
+    public function responseJSON()
+    {
+        if(count($this->error) != 0)
+        {
+            $response = [
+                'status' => 'error',
+                'errors' => $this->error,
+            ];
+
+            echo \GuzzleHttp\json_encode($response);
+        }else{
+            $response = [
+                'status' => 'success',
+                'response' => $this->success
+            ];
+
+            echo \GuzzleHttp\json_encode($response);
+        }
+    }
+
+    private function checkOptions($options)
+    {
+        if (empty($options['host'])) {
+            $this->reportError('host', 'Servidor não configurado.');
+        }
+        if (empty($options['chave_api'])) {
+            $this->reportError('chave_api', 'Chave API não configurada.');
+        }
+    }
+
     public function setHost($host)
     {
         $this->host = $host;
+        return $this;
     }
 
     public function setChaveAPI($chave)
     {
         $this->chave_api = $chave;
+        return $this;
     }
 
     protected function runQuery($action, $arguments, $throw=false)
     {
         $host = $this->getHost();
-        $client = new Client(['base_uri' => $host]);
+        $chave = $this->getChaveAPI();
+
+        $client = new Client(['base_uri' => $host.'/admin/api/'.$chave.'/']);
+
         try{
-            $response = $client->post('/json-api/' . $action, [
-                'headers' => $this->createHeader(),
-                // 'body'    => $arguments[0],
-                'verify' => false,
-                'query' => $arguments,
-                'timeout' => $this->getTimeout(),
-                'connect_timeout' => $this->getConnectionTimeout()
-            ]);
-            return (string) $response->getBody();
+            $response = $client->request('GET', $action.'/'.$arguments);
+
+            $return = (string) $response->getBody();
+            list ($status, $porta, $msg) = explode ('|', $return);
+
+            $success = [
+                'status' => $status,
+                'porta' => $porta,
+                'verbose' => $msg
+            ];
+
+            array_push($this->success, $success);
+            $this->responseJSON();
         }
-        catch(\GuzzleHttp\Exception\ClientException $e)
+        catch(RequestException $e)
         {
-            if ($throw) {
-                throw $e;
-            }
-            return $e->getMessage();
+            $erro = $e->getHandlerContext();
+            $this->reportError('host', 'Não foi possível se conectar ao Servidor: '.$this->getHost(), $erro['url']);
+            $this->responseJSON();
         }
     }
 }
