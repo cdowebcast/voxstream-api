@@ -34,11 +34,10 @@ class API implements VoxInterface
         return $this->host;
     }
 
-    public function reportError($param, $message, $url = '')
+    public function reportError($param, $message)
     {
         $array = [
             'param' => $param,
-            'url' => $url,
             'verbose' => $message,
         ];
 
@@ -103,21 +102,26 @@ class API implements VoxInterface
             $response = $client->request('GET', $action.'/'.$arguments);
 
             $return = (string) $response->getBody();
-            list ($status, $porta, $msg) = explode ('|', $return);
+            list ($status, $dados, $msg) = explode ('|', $return);
 
-            $success = [
-                'status' => $status,
-                'porta' => $porta,
-                'verbose' => $msg
-            ];
+            if ($status == 1){
+                $success = [
+                    'status' => $status,
+                    'data' => $dados,
+                    'verbose' => $msg
+                ];
 
-            array_push($this->success, $success);
+                array_push($this->success, $success);
+            }else{
+                $this->reportError('desconhecido', 'Permissão negada / Revenda não existe.');
+            }
+
             $this->responseJSON();
         }
         catch(RequestException $e)
         {
             $erro = $e->getHandlerContext();
-            $this->reportError('host', 'Não foi possível se conectar ao Servidor: '.$this->getHost(), $erro['url']);
+            $this->reportError('host', 'Não foi possível se conectar ao Servidor: '.$this->getHost());
             $this->responseJSON();
         }
     }
